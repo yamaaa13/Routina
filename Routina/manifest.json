@@ -1,0 +1,32 @@
+{
+  "name": "Routina",
+  "short_name": "Routina",
+  "description": "あなたのリズムをつくる - ADHD/ASD支援ポモドーロタイマー＆タスク管理",
+  "start_url": "./routina.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0A0F1E",
+  "theme_color": "#0A0F1E",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "categories": ["productivity", "health"],
+  "lang": "ja"
+}
