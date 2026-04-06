@@ -125,6 +125,49 @@
     background: linear-gradient(135deg, var(--green-dim), #10B981); color: #fff;
     border-color: transparent; box-shadow: 0 2px 12px var(--glow-green);
   }
+  .timer-mode-btn.active-custom {
+    background: linear-gradient(135deg, #D946EF, #A855F7); color: #fff;
+    border-color: transparent; box-shadow: 0 2px 12px rgba(217, 70, 239, 0.25);
+  }
+  .custom-settings {
+    background: var(--card); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    border-radius: 14px; padding: 14px 16px; margin-bottom: 16px;
+    border: 1px solid var(--border); box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+  }
+  .custom-settings-title { font-size: 12px; color: var(--text-dim); font-weight: 600; margin-bottom: 10px; }
+  .custom-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .custom-row:last-child { margin-bottom: 0; }
+  .custom-row label { font-size: 13px; color: var(--text-muted); width: 60px; flex-shrink: 0; }
+  .custom-input {
+    width: 60px; padding: 6px 10px; border-radius: 10px; font-size: 14px;
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    outline: none; text-align: center; font-weight: 600;
+  }
+  .custom-row span { font-size: 12px; color: var(--text-muted); }
+
+  /* Priority */
+  .priority-tag {
+    display: inline-block; font-size: 10px; padding: 3px 10px; border-radius: 10px;
+    font-weight: 600; margin-left: 6px;
+  }
+  .priority-high { background: rgba(248,113,113,0.2); color: #F87171; border: 1px solid rgba(248,113,113,0.2); }
+  .priority-mid { background: rgba(251,191,36,0.2); color: #FBBF24; border: 1px solid rgba(251,191,36,0.2); }
+  .priority-low { background: rgba(52,211,153,0.2); color: #34D399; border: 1px solid rgba(52,211,153,0.2); }
+  .priority-select {
+    padding: 6px 10px; border-radius: 10px; font-size: 13px;
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    outline: none; margin-top: 8px; width: 100%;
+  }
+  .sort-btn {
+    padding: 5px 12px; border-radius: 12px; border: 1px solid var(--border);
+    background: var(--card); color: var(--text-dim); font-size: 11px; font-weight: 600;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    margin-bottom: 10px; transition: all .2s;
+  }
+  .sort-btn.active-sort {
+    background: linear-gradient(135deg, var(--accent), #7C3AED); color: #fff;
+    border-color: transparent;
+  }
 
   .timer-ring-wrap { display: flex; justify-content: center; margin-bottom: 24px; }
   .timer-ring { position: relative; filter: drop-shadow(0 0 20px var(--glow-accent)); }
@@ -381,6 +424,11 @@ let state = {
   tasks: loadTasks(),
   showAddTask: false, newTaskTitle: '',
   newSubtasks: {},
+  // custom timer
+  customWork: loadCustomTimer('work', 30),
+  customBreak: loadCustomTimer('break', 10),
+  // task sort
+  sortByPriority: false,
   // audio
   bgmPattern: loadBgmPattern(),
   bgmVolume: 0.3,
@@ -405,6 +453,28 @@ function loadBgmPattern() {
 function saveBgmPattern() {
   try { localStorage.setItem('rt_bgm', state.bgmPattern); } catch {}
 }
+
+function loadCustomTimer(type, def) {
+  try { return parseInt(localStorage.getItem('rt_custom_' + type)) || def; } catch { return def; }
+}
+function saveCustomTimer() {
+  try { localStorage.setItem('rt_custom_work', state.customWork); localStorage.setItem('rt_custom_break', state.customBreak); } catch {}
+}
+function getCustomWorkTime() { return state.customWork * 60; }
+function getCustomBreakTime() { return state.customBreak * 60; }
+function getTimerTotal() {
+  if (state.timerMode === 'work') return WORK_TIME;
+  if (state.timerMode === 'short') return SHORT_BREAK;
+  if (state.timerMode === 'long') return LONG_BREAK;
+  if (state.timerMode === 'custom_work') return getCustomWorkTime();
+  if (state.timerMode === 'custom_break') return getCustomBreakTime();
+  return WORK_TIME;
+}
+function isCustomMode() { return state.timerMode === 'custom_work' || state.timerMode === 'custom_break'; }
+function isWorkMode() { return state.timerMode === 'work' || state.timerMode === 'custom_work'; }
+
+const PRIORITY_ORDER = { high: 0, mid: 1, low: 2, none: 3 };
+const PRIORITY_LABELS = { high: '高', mid: '中', low: '低' };
 
 function getAudioCtx() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -551,12 +621,12 @@ function loadTasks() {
     if (t && t.length) return t;
   } catch {}
   return [
-    { id: 1, title: '朝のルーティン', routine: true, open: true, subs: [
+    { id: 1, title: '朝のルーティン', routine: true, open: true, priority: 'high', subs: [
       { id: 101, text: '水を飲む', done: false },
       { id: 102, text: 'ストレッチ 5分', done: false },
       { id: 103, text: '今日のタスクを確認', done: false },
     ]},
-    { id: 2, title: '企画書を仕上げる', routine: false, open: false, subs: [
+    { id: 2, title: '企画書を仕上げる', routine: false, open: false, priority: 'mid', subs: [
       { id: 201, text: '構成を見直す', done: false },
       { id: 202, text: 'データを更新', done: false },
       { id: 203, text: '最終チェック', done: false },
@@ -632,27 +702,39 @@ function renderStampBoard() {
 }
 
 function renderTimer() {
-  const totalTime = state.timerMode === 'work' ? WORK_TIME : state.timerMode === 'short' ? SHORT_BREAK : LONG_BREAK;
+  const totalTime = getTimerTotal();
   const progress = 1 - state.timeLeft / totalTime;
   const size = 220, sw = 8;
   const r = (size - sw) / 2, c = 2 * Math.PI * r;
   const offset = c * (1 - progress);
-  const isWork = state.timerMode === 'work';
+  const isWork = isWorkMode();
   const color = isWork ? 'var(--accent)' : 'var(--green)';
-  const label = state.timerMode === 'work' ? '集中タイム' : state.timerMode === 'short' ? '小休憩' : '長休憩';
+  const labelMap = { work: '集中タイム', short: '小休憩', long: '長休憩', custom_work: 'カスタム集中', custom_break: 'カスタム休憩' };
+  const label = labelMap[state.timerMode] || '集中タイム';
   const mins = String(Math.floor(state.timeLeft / 60)).padStart(2, '0');
   const secs = String(state.timeLeft % 60).padStart(2, '0');
 
-  const modeButtons = [['work','集中'],['short','小休憩'],['long','長休憩']].map(([m,l]) => {
+  const modes = [['work','集中'],['short','小休憩'],['long','長休憩']];
+  const modeButtons = modes.map(([m,l]) => {
     let cls = 'timer-mode-btn';
     if (state.timerMode === m) cls += m === 'work' ? ' active-work' : ' active-break';
     return `<button class="${cls}" data-timer-mode="${m}">${l}</button>`;
   }).join('');
+  const customActive = isCustomMode();
+  const customBtn = `<button class="timer-mode-btn${customActive ? ' active-custom' : ''}" data-timer-mode="custom_work">カスタム</button>`;
+
+  const customPanel = customActive || state.timerMode === 'custom_work' || state.timerMode === 'custom_break' ? `
+    <div class="custom-settings">
+      <div class="custom-settings-title">カスタム時間設定</div>
+      <div class="custom-row"><label>集中</label><input type="number" class="custom-input" id="custom-work-input" min="1" max="120" value="${state.customWork}"><span>分</span></div>
+      <div class="custom-row"><label>休憩</label><input type="number" class="custom-input" id="custom-break-input" min="1" max="60" value="${state.customBreak}"><span>分</span></div>
+    </div>` : '';
 
   const playClass = state.running ? 'paused' : (isWork ? 'work' : 'break');
 
   return `<div class="tab-content">
-    <div class="timer-modes">${modeButtons}</div>
+    <div class="timer-modes">${modeButtons}${customBtn}</div>
+    ${customPanel}
     <div class="timer-ring-wrap">
       <div class="timer-ring" style="width:${size}px;height:${size}px">
         <svg width="${size}" height="${size}">
@@ -687,7 +769,11 @@ function renderTimer() {
 }
 
 function renderTasks() {
-  const taskCards = state.tasks.map((t, idx) => {
+  let displayTasks = [...state.tasks];
+  if (state.sortByPriority) {
+    displayTasks.sort((a, b) => (PRIORITY_ORDER[a.priority || 'none'] || 3) - (PRIORITY_ORDER[b.priority || 'none'] || 3));
+  }
+  const taskCards = displayTasks.map((t, idx) => {
     const doneCount = t.subs.filter(s => s.done).length;
     const total = t.subs.length;
     const prog = total > 0 ? doneCount / total : 0;
@@ -718,6 +804,7 @@ function renderTasks() {
         <span class="chevron ${t.open ? 'open' : ''}">${icons.chevron}</span>
         <div style="flex:1">
           <span class="task-title ${complete ? 'done' : ''}">${esc(t.title)}</span>
+          ${t.priority && t.priority !== 'none' ? `<span class="priority-tag priority-${t.priority}">${PRIORITY_LABELS[t.priority]}</span>` : ''}
           ${t.routine ? '<span class="routine-tag">ルーティン</span>' : ''}
           ${total > 0 ? `<div class="task-progress-bar"><div class="task-progress-fill ${complete ? 'done' : 'normal'}" style="width:${prog*100}%"></div></div>` : ''}
         </div>
@@ -730,6 +817,14 @@ function renderTasks() {
   const addForm = state.showAddTask ? `
     <div class="add-task-form">
       <input class="add-task-input" id="new-task-input" placeholder="新しいタスク名..." value="${esc(state.newTaskTitle)}">
+      <div style="margin:8px 0">
+        <select class="priority-select" id="new-task-priority">
+          <option value="none">優先度なし</option>
+          <option value="high">高</option>
+          <option value="mid">中</option>
+          <option value="low">低</option>
+        </select>
+      </div>
       <div class="add-task-actions">
         <button class="btn-cancel" id="btn-cancel-task">キャンセル</button>
         <button class="btn-confirm" id="btn-add-task">追加</button>
@@ -737,7 +832,9 @@ function renderTasks() {
     </div>
   ` : `<button class="btn-add-task" id="btn-show-add">${icons.plus} タスクを追加</button>`;
 
-  return `<div class="tab-content">${taskCards}${addForm}</div>`;
+  const sortBtn = `<button class="sort-btn" id="btn-sort-priority">${state.sortByPriority ? '★ 優先度順' : '☆ 優先度順'}</button>`;
+
+  return `<div class="tab-content"><div style="text-align:right;margin-bottom:8px">${sortBtn}</div>${taskCards}${addForm}</div>`;
 }
 
 function renderBottomNav() {
@@ -759,9 +856,15 @@ function bindEvents() {
   // Timer mode
   document.querySelectorAll('[data-timer-mode]').forEach(el => {
     el.onclick = () => {
-      stopTimer();
-      state.timerMode = el.dataset.timerMode;
-      state.timeLeft = state.timerMode === 'work' ? WORK_TIME : state.timerMode === 'short' ? SHORT_BREAK : LONG_BREAK;
+      stopTimer(); stopBgm();
+      const m = el.dataset.timerMode;
+      if (m === 'custom_work') {
+        state.timerMode = 'custom_work';
+        state.timeLeft = getCustomWorkTime();
+      } else {
+        state.timerMode = m;
+        state.timeLeft = m === 'work' ? WORK_TIME : m === 'short' ? SHORT_BREAK : LONG_BREAK;
+      }
       state.running = false;
       render();
     };
@@ -780,8 +883,7 @@ function bindEvents() {
   if (resetBtn) resetBtn.onclick = () => {
     stopTimer(); stopBgm();
     state.running = false;
-    const tt = state.timerMode === 'work' ? WORK_TIME : state.timerMode === 'short' ? SHORT_BREAK : LONG_BREAK;
-    state.timeLeft = tt;
+    state.timeLeft = getTimerTotal();
     render();
   };
 
@@ -874,11 +976,31 @@ function bindEvents() {
       updateBgmVolume();
     };
   }
+
+  // Custom timer inputs
+  const cwInput = document.getElementById('custom-work-input');
+  if (cwInput) cwInput.onchange = () => {
+    state.customWork = Math.max(1, Math.min(120, parseInt(cwInput.value) || 30));
+    saveCustomTimer();
+    if (state.timerMode === 'custom_work' && !state.running) { state.timeLeft = getCustomWorkTime(); render(); }
+  };
+  const cbInput = document.getElementById('custom-break-input');
+  if (cbInput) cbInput.onchange = () => {
+    state.customBreak = Math.max(1, Math.min(60, parseInt(cbInput.value) || 10));
+    saveCustomTimer();
+    if (state.timerMode === 'custom_break' && !state.running) { state.timeLeft = getCustomBreakTime(); render(); }
+  };
+
+  // Sort by priority
+  const sortBtn = document.getElementById('btn-sort-priority');
+  if (sortBtn) sortBtn.onclick = () => { state.sortByPriority = !state.sortByPriority; render(); };
 }
 
 function addNewTask() {
   if (!state.newTaskTitle.trim()) return;
-  state.tasks.push({ id: Date.now(), title: state.newTaskTitle.trim(), routine: false, open: true, subs: [] });
+  const prioEl = document.getElementById('new-task-priority');
+  const priority = prioEl ? prioEl.value : 'none';
+  state.tasks.push({ id: Date.now(), title: state.newTaskTitle.trim(), routine: false, open: true, priority: priority, subs: [] });
   state.newTaskTitle = '';
   state.showAddTask = false;
   saveTasks(); render();
@@ -893,10 +1015,12 @@ function startTimer() {
       updateTimerDisplay();
     } else {
       stopTimer();
-      if (state.timerMode === 'work') {
+      if (isWorkMode()) {
         state.sessions++;
         state.pomoCount++;
-        if (state.sessions % 4 === 0) {
+        if (isCustomMode()) {
+          state.timerMode = 'custom_break'; state.timeLeft = getCustomBreakTime();
+        } else if (state.sessions % 4 === 0) {
           state.timerMode = 'long'; state.timeLeft = LONG_BREAK;
         } else {
           state.timerMode = 'short'; state.timeLeft = SHORT_BREAK;
@@ -911,7 +1035,11 @@ function startTimer() {
         playAlarm('break_end');
         stopBgm();
         state.running = false;
-        state.timerMode = 'work'; state.timeLeft = WORK_TIME;
+        if (state.timerMode === 'custom_break') {
+          state.timerMode = 'custom_work'; state.timeLeft = getCustomWorkTime();
+        } else {
+          state.timerMode = 'work'; state.timeLeft = WORK_TIME;
+        }
         render();
       }
     }
@@ -928,7 +1056,7 @@ function updateTimerDisplay() {
   const digits = document.querySelector('.timer-digits');
   if (digits) digits.textContent = `${mins}:${secs}`;
 
-  const totalTime = state.timerMode === 'work' ? WORK_TIME : state.timerMode === 'short' ? SHORT_BREAK : LONG_BREAK;
+  const totalTime = getTimerTotal();
   const progress = 1 - state.timeLeft / totalTime;
   const size = 220, sw = 8;
   const r = (size - sw) / 2, c = 2 * Math.PI * r;
