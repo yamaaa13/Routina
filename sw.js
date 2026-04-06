@@ -1,7 +1,7 @@
-const CACHE_NAME = 'routina-v1';
+const CACHE_NAME = 'routina-v2';
 const ASSETS = [
   './',
-  './routina.html',
+  './index.html',
   './bgm1.mp3',
   './bgm2.mp3',
   './bgm3.mp3',
@@ -48,7 +48,7 @@ self.addEventListener('fetch', event => {
       }).catch(() => {
         // Offline fallback - return cached index if available
         if (event.request.mode === 'navigate') {
-          return caches.match('./routina.html');
+          return caches.match('./index.html');
         }
       });
     })
