@@ -2,7 +2,7 @@
   "name": "Routina",
   "short_name": "Routina",
   "description": "あなたのリズムをつくる - ADHD/ASD支援ポモドーロタイマー＆タスク管理",
-  "start_url": "./routina.html",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#0A0F1E",
