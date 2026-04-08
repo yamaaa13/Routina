@@ -458,6 +458,8 @@ let state = {
   activeTaskId: null, showTaskPicker: false, timerFromPicker: false,
   // complete modal
   showCompleteModal: false,
+  // praise popup
+  showPraiseModal: false, praiseMessage: '',
   // audio
   bgmPattern: loadBgmPattern(),
   bgmVolume: 0.3,
@@ -677,7 +679,8 @@ function render() {
     '</div>' +
     renderBottomNav() +
     (state.showTaskPicker ? renderTaskPickerOverlay() : '') +
-    (state.showCompleteModal ? renderCompleteModal() : '');
+    (state.showCompleteModal ? renderCompleteModal() : '') +
+    (state.showPraiseModal ? renderPraiseModal() : '');
   bindEvents();
 }
 
@@ -919,6 +922,18 @@ function renderCompleteModal() {
     '<div class="sheet-btns">' +
     '<button class="btn-sheet-secondary" id="btn-keep-going">まだ続ける</button>' +
     '<button class="btn-sheet-primary" id="btn-mark-complete">完了にする</button>' +
+    '</div></div></div></div>';
+}
+
+function renderPraiseModal() {
+  return '<div class="overlay" id="praise-overlay">' +
+    '<div class="sheet">' +
+    '<div class="complete-modal-content">' +
+    '<h2>' + esc(state.praiseMessage) + '</h2>' +
+    '<p style="margin-top:8px">今日の集中、お疲れさまでした。</p>' +
+    '<div class="sheet-btns">' +
+    '<button class="btn-sheet-secondary" id="btn-praise-close">閉じる</button>' +
+    '<button class="btn-sheet-primary" id="btn-praise-share" style="background:linear-gradient(135deg,#06C755,#00B548);box-shadow:0 2px 10px rgba(6,199,85,0.3)">LINEで共有する</button>' +
     '</div></div></div></div>';
 }
 
@@ -1186,9 +1201,27 @@ function bindEvents() {
   };
   var markCompleteBtn = document.getElementById('btn-mark-complete');
   if (markCompleteBtn) markCompleteBtn.onclick = function() {
-    shareToLine();
+    var msgs = ['お疲れさまでした！', '今日も頑張りましたね！', 'グッジョブ！', 'えらいです！'];
+    state.praiseMessage = msgs[Math.floor(Math.random() * msgs.length)];
     state.activeTaskId = null;
     state.showCompleteModal = false;
+    state.showPraiseModal = true;
+    render();
+  };
+
+  // Praise modal
+  var praiseClose = document.getElementById('btn-praise-close');
+  if (praiseClose) praiseClose.onclick = function() {
+    state.showPraiseModal = false;
+    state.praiseMessage = '';
+    startBreakAfterWork();
+    render();
+  };
+  var praiseShare = document.getElementById('btn-praise-share');
+  if (praiseShare) praiseShare.onclick = function() {
+    shareToLine();
+    state.showPraiseModal = false;
+    state.praiseMessage = '';
     startBreakAfterWork();
     render();
   };
@@ -1282,9 +1315,8 @@ function updateTimerDisplay() {
 
 // ========== LINE Share ==========
 function shareToLine() {
-  var msgs = ['お疲れさまでした！', '今日も頑張りましたね！', 'グッジョブ！', 'えらいです！'];
-  var msg = msgs[Math.floor(Math.random() * msgs.length)];
-  var url = 'https://line.me/R/share?text=' + encodeURIComponent(msg);
+  // 文言はRoutina側のポップアップで既に表示済みのため、LINEはテキストなしで起動
+  var url = 'https://line.me/R/share?text=';
   window.open(url, '_blank');
 }
 
