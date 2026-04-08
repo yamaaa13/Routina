@@ -445,6 +445,7 @@ let state = {
   tab: 'timer',
   // timer
   timerMode: 'work', timeLeft: WORK_TIME, running: false, sessions: 0, pomoCount: 0,
+  endTime: null,
   // tasks
   tasks: loadTasks(),
   // add task step flow: 0=hidden, 1=name, 2=q1(urgent), 3=q2(important), 4=result
@@ -566,6 +567,19 @@ function getAudioCtx() {
   return audioCtx;
 }
 
+// Warm up audio context on user gesture (so alarms can fire later)
+function warmUpAudio() {
+  try {
+    var ctx = getAudioCtx();
+    var o = ctx.createOscillator();
+    var g = ctx.createGain();
+    g.gain.value = 0;
+    o.connect(g).connect(ctx.destination);
+    o.start();
+    o.stop(ctx.currentTime + 0.01);
+  } catch(e) {}
+}
+
 function stopBgm() {
   if (bgmAudio) {
     var audio = bgmAudio;
@@ -592,18 +606,14 @@ function startBgm() {
   var pattern = BGM_PATTERNS.find(function(p) { return p.id === state.bgmPattern; });
   if (!pattern || !pattern.file) return;
   var audio = new Audio(pattern.file);
-  audio.volume = 0; audio.loop = false;
+  audio.loop = true; // ネイティブループで確実に繰り返す
+  audio.volume = 0;
   bgmAudio = audio;
-  audio.addEventListener('timeupdate', function() {
-    if (!audio.duration) return;
-    var tl = audio.duration - audio.currentTime;
-    if (tl <= FADE_DURATION && tl > 0) audio.volume = Math.max(0, (tl / FADE_DURATION) * state.bgmVolume);
-  });
+  // ループ時にも保険として ended でも再開
   audio.addEventListener('ended', function() {
     if (bgmAudio === audio && state.running) {
-      audio.currentTime = 0; audio.volume = 0;
+      audio.currentTime = 0;
       audio.play().catch(function() {});
-      fadeInBgm(audio);
     }
   });
   audio.play().then(function() { fadeInBgm(audio); }).catch(function() {});
@@ -630,26 +640,45 @@ function updateBgmVolume() {
 }
 
 function playAlarm(type) {
-  var ctx = getAudioCtx();
-  var t = ctx.currentTime;
-  if (type === 'work_end') {
-    [523.3, 659.3, 784.0].forEach(function(freq, i) {
-      var o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = freq;
-      var g = ctx.createGain();
-      g.gain.setValueAtTime(0.3, t + i * 0.15);
-      g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.15 + 0.8);
-      o.connect(g).connect(ctx.destination);
-      o.start(t + i * 0.15); o.stop(t + i * 0.15 + 0.8);
-    });
-  } else if (type === 'break_end') {
-    [392.0, 440.0, 523.3, 659.3].forEach(function(freq, i) {
-      var o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = freq;
-      var g = ctx.createGain();
-      g.gain.setValueAtTime(0.25, t + i * 0.12);
-      g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.12 + 0.5);
-      o.connect(g).connect(ctx.destination);
-      o.start(t + i * 0.12); o.stop(t + i * 0.12 + 0.5);
-    });
+  // バイブレーション（モバイル）
+  try { if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 400]); } catch(e) {}
+
+  var ctx;
+  try { ctx = getAudioCtx(); } catch(e) { return; }
+  // suspended状態なら非同期resume後にスケジュール
+  var schedule = function() {
+    var t = ctx.currentTime + 0.05;
+    if (type === 'work_end') {
+      // 3連続のチャイム（よりはっきり聞こえるように繰り返し）
+      for (var rep = 0; rep < 3; rep++) {
+        var base = t + rep * 1.0;
+        [523.3, 659.3, 784.0].forEach(function(freq, i) {
+          var o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = freq;
+          var g = ctx.createGain();
+          g.gain.setValueAtTime(0.5, base + i * 0.15);
+          g.gain.exponentialRampToValueAtTime(0.001, base + i * 0.15 + 0.8);
+          o.connect(g).connect(ctx.destination);
+          o.start(base + i * 0.15); o.stop(base + i * 0.15 + 0.8);
+        });
+      }
+    } else if (type === 'break_end') {
+      for (var rep2 = 0; rep2 < 3; rep2++) {
+        var base2 = t + rep2 * 0.9;
+        [392.0, 440.0, 523.3, 659.3].forEach(function(freq, i) {
+          var o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = freq;
+          var g = ctx.createGain();
+          g.gain.setValueAtTime(0.45, base2 + i * 0.12);
+          g.gain.exponentialRampToValueAtTime(0.001, base2 + i * 0.12 + 0.5);
+          o.connect(g).connect(ctx.destination);
+          o.start(base2 + i * 0.12); o.stop(base2 + i * 0.12 + 0.5);
+        });
+      }
+    }
+  };
+  if (ctx.state === 'suspended') {
+    ctx.resume().then(schedule).catch(schedule);
+  } else {
+    schedule();
   }
 }
 
@@ -955,6 +984,7 @@ function bindEvents() {
   document.querySelectorAll('[data-timer-mode]').forEach(function(el) {
     el.onclick = function() {
       stopTimer(); stopBgm();
+      state.endTime = null;
       var m = el.dataset.timerMode;
       if (m === 'custom_work') {
         state.timerMode = 'custom_work';
@@ -971,8 +1001,9 @@ function bindEvents() {
   // Play/Pause
   var playBtn = document.getElementById('btn-play');
   if (playBtn) playBtn.onclick = function() {
+    warmUpAudio(); // ユーザー操作でAudioContextを起動しておく
     if (state.running) {
-      stopTimer(); stopBgm(); state.running = false; render();
+      pauseTimer(); stopBgm(); state.running = false; render();
     } else {
       if (isWorkMode() && state.tasks.length > 0 && !state.activeTaskId) {
         state.showTaskPicker = true; render();
@@ -986,6 +1017,7 @@ function bindEvents() {
   var resetBtn = document.getElementById('btn-reset');
   if (resetBtn) resetBtn.onclick = function() {
     stopTimer(); stopBgm();
+    state.endTime = null;
     state.running = false; state.timeLeft = getTimerTotal(); render();
   };
 
@@ -1266,38 +1298,62 @@ function startBreakAfterWork() {
 
 function startTimer() {
   stopTimer();
-  timerInterval = setInterval(function() {
-    if (state.timeLeft > 0) {
-      state.timeLeft--;
-      updateTimerDisplay();
+  // タイムスタンプベース：endTimeを記録しておけばバックグラウンドからの復帰時も正確
+  state.endTime = Date.now() + state.timeLeft * 1000;
+  tickTimer(); // 即座に1回チェック
+  timerInterval = setInterval(tickTimer, 500);
+}
+
+function tickTimer() {
+  if (!state.endTime) return;
+  var remaining = Math.round((state.endTime - Date.now()) / 1000);
+  if (remaining > 0) {
+    state.timeLeft = remaining;
+    updateTimerDisplay();
+  } else {
+    state.timeLeft = 0;
+    stopTimer();
+    state.endTime = null;
+    if (isWorkMode()) {
+      state.sessions++;
+      state.pomoCount++;
+      playAlarm('work_end');
+      stopBgm();
+      state.running = false;
+      state.showCompleteModal = true;
+      render();
     } else {
-      stopTimer();
-      if (isWorkMode()) {
-        state.sessions++;
-        state.pomoCount++;
-        playAlarm('work_end');
-        stopBgm();
-        state.running = false;
-        state.showCompleteModal = true;
-        render();
+      playAlarm('break_end');
+      stopBgm();
+      state.running = false;
+      if (state.timerMode === 'custom_break') {
+        state.timerMode = 'custom_work'; state.timeLeft = getCustomWorkTime();
       } else {
-        playAlarm('break_end');
-        stopBgm();
-        state.running = false;
-        if (state.timerMode === 'custom_break') {
-          state.timerMode = 'custom_work'; state.timeLeft = getCustomWorkTime();
-        } else {
-          state.timerMode = 'work'; state.timeLeft = WORK_TIME;
-        }
-        render();
+        state.timerMode = 'work'; state.timeLeft = WORK_TIME;
       }
+      render();
     }
-  }, 1000);
+  }
+}
+
+function pauseTimer() {
+  if (state.endTime) {
+    state.timeLeft = Math.max(0, Math.round((state.endTime - Date.now()) / 1000));
+    state.endTime = null;
+  }
+  stopTimer();
 }
 
 function stopTimer() {
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
 }
+
+// ページが再表示されたとき即座に状態を再計算（モバイルのスリープ復帰対策）
+document.addEventListener('visibilitychange', function() {
+  if (!document.hidden && state.running && state.endTime) {
+    tickTimer();
+  }
+});
 
 function updateTimerDisplay() {
   var mins = String(Math.floor(state.timeLeft / 60)).padStart(2, '0');
