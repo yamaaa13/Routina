@@ -460,7 +460,7 @@ let state = {
   // complete modal
   showCompleteModal: false,
   // praise popup
-  showPraiseModal: false, praiseMessage: '',
+  showPraiseModal: false, praiseMessage: '', praiseFromTimer: false,
   // audio
   bgmPattern: loadBgmPattern(),
   bgmVolume: 0.3,
@@ -1059,9 +1059,15 @@ function bindEvents() {
     };
   });
 
-  // Share buttons
+  // Share buttons (タスクカードから) → 褒めモーダル経由
   document.querySelectorAll('[data-share]').forEach(function(el) {
-    el.onclick = function(e) { e.stopPropagation(); shareToLine(); };
+    el.onclick = function(e) {
+      e.stopPropagation();
+      var msgs = ['お疲れさまでした！', '今日も頑張りましたね！', 'グッジョブ！', 'えらいです！'];
+      state.praiseMessage = msgs[Math.floor(Math.random() * msgs.length)];
+      state.showPraiseModal = true;
+      render();
+    };
   });
 
   // Delete buttons
@@ -1238,23 +1244,28 @@ function bindEvents() {
     state.activeTaskId = null;
     state.showCompleteModal = false;
     state.showPraiseModal = true;
+    state.praiseFromTimer = true;
     render();
   };
 
   // Praise modal
   var praiseClose = document.getElementById('btn-praise-close');
   if (praiseClose) praiseClose.onclick = function() {
+    var wasTimer = state.praiseFromTimer;
     state.showPraiseModal = false;
     state.praiseMessage = '';
-    startBreakAfterWork();
+    state.praiseFromTimer = false;
+    if (wasTimer) startBreakAfterWork();
     render();
   };
   var praiseShare = document.getElementById('btn-praise-share');
   if (praiseShare) praiseShare.onclick = function() {
+    var wasTimer = state.praiseFromTimer;
     shareToLine();
     state.showPraiseModal = false;
     state.praiseMessage = '';
-    startBreakAfterWork();
+    state.praiseFromTimer = false;
+    if (wasTimer) startBreakAfterWork();
     render();
   };
 }
